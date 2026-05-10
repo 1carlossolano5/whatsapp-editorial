@@ -1,6 +1,12 @@
 const express = require('express');
 const app = express();
+app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+const axios = require('axios');
+
+const INSTANCE_ID = 'instance174354';
+const TOKEN = 'kfl849l7p1a8a4dz';
 
 const sesiones = {};
 const timers = {};
@@ -11,6 +17,18 @@ function limpiarTimers(telefono) {
         clearTimeout(timers[telefono].cerrar);
     }
     timers[telefono] = {};
+}
+
+async function enviarMensaje(telefono, texto) {
+    try {
+        await axios.post(`https://api.ultramsg.com/${INSTANCE_ID}/messages/chat`, {
+            token: TOKEN,
+            to: telefono,
+            body: texto
+        });
+    } catch (err) {
+        console.log('Error enviando mensaje:', err.message);
+    }
 }
 
 function obtenerRespuesta(mensajeUsuario, telefono) {
@@ -99,32 +117,36 @@ function obtenerRespuesta(mensajeUsuario, telefono) {
     return 'No entendi tu mensaje.\n\nEscribe hola o menu para ver todas las opciones.\nO escribe asesor para hablar con una persona.';
 }
 
-app.post('/webhook', (req, res) => {
-    const mensajeUsuario = req.body.Body || '';
-    const telefono = req.body.From || '';
+app.post('/webhook', async (req, res) => {
+    res.sendStatus(200);
 
-    console.log('Mensaje recibido:', mensajeUsuario);
-    console.log('De:', telefono);
+    const data = req.body;
+    console.log('Data recibida:', JSON.stringify(data));
+
+    const mensajeUsuario = data.body || data.Body || '';
+    const telefono = data.from || data.From || '';
+
+    if (!mensajeUsuario || !telefono) return;
+    if (data.fromMe) return;
+
+    console.log('Mensaje:', mensajeUsuario, 'De:', telefono);
 
     limpiarTimers(telefono);
 
-    const texto = obtenerRespuesta(mensajeUsuario, telefono);
-
-    console.log('Respuesta:', texto);
+    const respuesta = obtenerRespuesta(mensajeUsuario, telefono);
 
     timers[telefono].inactivo = setTimeout(() => {
         sesiones[telefono] = { paso: 'esperando_confirmacion' };
+        enviarMensaje(telefono, 'Sigues ahi? Responde si para continuar o no para cerrar.');
     }, 2 * 60 * 1000);
 
     timers[telefono].cerrar = setTimeout(() => {
+        enviarMensaje(telefono, 'La sesion se cerro por inactividad. Escribe hola para volver a empezar.');
         delete sesiones[telefono];
         delete timers[telefono];
     }, 5 * 60 * 1000);
 
-    const xml = '<?xml version="1.0" encoding="UTF-8"?><Response><Message><![CDATA[' + texto + ']]></Message></Response>';
-    console.log('XML:', xml);
-    res.set('Content-Type', 'text/xml');
-    res.status(200).send(xml);
+    await enviarMensaje(telefono, respuesta);
 });
 
 app.listen(process.env.PORT || 3000, () => {
