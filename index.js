@@ -13,11 +13,6 @@ function limpiarTimers(telefono) {
     timers[telefono] = {};
 }
 
-function responder(res, texto) {
-    res.writeHead(200, { 'Content-Type': 'text/xml' });
-    res.end('<?xml version="1.0" encoding="UTF-8"?><Response><Message><![CDATA[' + texto + ']]></Message></Response>');
-}
-
 function obtenerRespuesta(mensajeUsuario, telefono) {
     const texto = mensajeUsuario.toLowerCase().trim();
     const sesion = sesiones[telefono] || { paso: 'inicio' };
@@ -105,12 +100,17 @@ function obtenerRespuesta(mensajeUsuario, telefono) {
 }
 
 app.post('/webhook', (req, res) => {
-    const mensajeUsuario = req.body.Body;
-    const telefono = req.body.From;
+    const mensajeUsuario = req.body.Body || '';
+    const telefono = req.body.From || '';
+
+    console.log('Mensaje recibido:', mensajeUsuario);
+    console.log('De:', telefono);
 
     limpiarTimers(telefono);
 
     const texto = obtenerRespuesta(mensajeUsuario, telefono);
+
+    console.log('Respuesta:', texto);
 
     timers[telefono].inactivo = setTimeout(() => {
         sesiones[telefono] = { paso: 'esperando_confirmacion' };
@@ -121,7 +121,10 @@ app.post('/webhook', (req, res) => {
         delete timers[telefono];
     }, 5 * 60 * 1000);
 
-    responder(res, texto);
+    const xml = '<?xml version="1.0" encoding="UTF-8"?><Response><Message><![CDATA[' + texto + ']]></Message></Response>';
+    console.log('XML:', xml);
+    res.set('Content-Type', 'text/xml');
+    res.status(200).send(xml);
 });
 
 app.listen(process.env.PORT || 3000, () => {
